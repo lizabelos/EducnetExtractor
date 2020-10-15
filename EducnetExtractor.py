@@ -1,12 +1,11 @@
 #!/bin/python3
 
-# Please install patool, p7zip, rar, unrar
-
 import argparse
 from pyunpack import Archive
 from os import listdir, mkdir, system
 from os.path import isfile, isdir, join, dirname, basename
 import shutil
+import re
 
 
 def recusriveFindCMakeLists(path):
@@ -24,7 +23,16 @@ def recusriveFindCMakeLists(path):
 
 
 def findDirsWithCpp(path):
-    pass
+    candidates = [join(path, f) for f in listdir(path) if f.endswith(".cpp")]
+    if len(candidates) > 0:
+        return [(path, candidates)]
+
+    result = []
+    dirs = [join(path, f) for f in listdir(path) if isdir(join(path, f))]
+    for dir in dirs:
+        result = result + findDirsWithCpp(dir)
+
+    return result
 
 
 def main():
@@ -71,13 +79,27 @@ def main():
         if cmakepath is not None:
             cmakedirname = dirname(cmakepath)
             shutil.move(cmakedirname, outputdirname)
-            system("cd '" + outputdirname + "' && mkdir build && cd build && cmake .. && make")
         else:
-            print("CMake not found for " + dir)
-            shutil.move(dir, outputdirname)
+            print("Automatic CMake generation for " + outputdirname)
+            cppdirs = findDirsWithCpp(dir)
+            mkdir(outputdirname)
+            for cppdir, cppfiles in cppdirs:
+                shutil.move(cppdir, join(outputdirname, basename(cppdir)))
+            cppdirs = findDirsWithCpp(outputdirname)
+            # todo : generate the CMakeLists.txt
+            cmakelistcontent = "cmake_minimum_required(VERSION 2.6)\r\nfile(TO_CMAKE_PATH \"$ENV{IMAGINEPP_ROOT}/CMake\" p)\r\nlist(APPEND CMAKE_MODULE_PATH \"${p}\") #For old Imagine++\r\nlist(APPEND CMAKE_SYSTEM_FRAMEWORK_PATH /Library/Frameworks) #Mac, why not auto?\r\nfind_package(Imagine REQUIRED)\r\n\r\nproject(EducnetExtractor)\n\n\n"
+            for cppdir, cppfiles in cppdirs:
+                cppfilesfrombase = ["'" + join(basename(cppdir), basename(file)) + "'" for file in cppfiles]
+                projectname = re.sub(r'\W+', '', basename(cppdir))
+                cmakelistcontent = cmakelistcontent + "add_executable(" + projectname + " " + " ".join(cppfilesfrombase) + ")\n"
+                cmakelistcontent = cmakelistcontent + "ImagineUseModules(" + projectname + " Graphics)\n"
+
+            with open(join(outputdirname, "CMakeLists.txt"), "w") as text_file:
+                text_file.write(cmakelistcontent)
+
+        system("cd '" + outputdirname + "' && mkdir build && cd build && cmake .. >/dev/null 2>/dev/null && make >/dev/null 2>/dev/null")
 
     shutil.rmtree(tmpdst)
-
 
 
 if __name__ == '__main__':
