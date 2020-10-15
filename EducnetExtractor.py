@@ -6,6 +6,7 @@ from os import listdir, mkdir, system
 from os.path import isfile, isdir, join, dirname, basename
 import shutil
 import re
+import os
 
 
 def recusriveFindCMakeLists(path):
@@ -35,10 +36,28 @@ def findDirsWithCpp(path):
     return result
 
 
+def findExecutables(path):
+    result = []
+
+    dirs = [join(path, f) for f in listdir(path) if isdir(join(path, f))]
+    executables = [join(path, f) for f in listdir(path) if
+                   isfile(join(path, f)) and os.access(join(path, f), os.X_OK) and not f.endswith(
+                       ".bin") and not f.endswith(".out")]
+
+    for dir in dirs:
+        executables = executables + findExecutables(dir)
+
+    return executables
+
+def cls():
+    os.system('cls' if os.name=='nt' else 'clear')
+
 def main():
     parser = argparse.ArgumentParser("EductnetExtractor by Thomas Belos")
     parser.add_argument("-z", "--zip", nargs='+', help='<Required> One or more zip file', required=True)
     parser.add_argument("-d", "--dst", help='<Required> Destination directory', required=True)
+    parser.add_argument("-e", "--execute", help='execute the file', type=bool)
+
     args = parser.parse_args()
 
     dst = args.dst
@@ -75,7 +94,7 @@ def main():
 
     for dir in dirs:
         cmakepath = recusriveFindCMakeLists(dir)
-        outputdirname = basename(dir)
+        outputdirname = join(dst,basename(dir).split("_")[0])
         if cmakepath is not None:
             cmakedirname = dirname(cmakepath)
             shutil.move(cmakedirname, outputdirname)
@@ -91,13 +110,60 @@ def main():
             for cppdir, cppfiles in cppdirs:
                 cppfilesfrombase = ["'" + join(basename(cppdir), basename(file)) + "'" for file in cppfiles]
                 projectname = re.sub(r'\W+', '', basename(cppdir))
-                cmakelistcontent = cmakelistcontent + "add_executable(" + projectname + " " + " ".join(cppfilesfrombase) + ")\n"
+                cmakelistcontent = cmakelistcontent + "add_executable(" + projectname + " " + " ".join(
+                    cppfilesfrombase) + ")\n"
                 cmakelistcontent = cmakelistcontent + "ImagineUseModules(" + projectname + " Graphics)\n"
 
             with open(join(outputdirname, "CMakeLists.txt"), "w") as text_file:
                 text_file.write(cmakelistcontent)
 
         system("cd '" + outputdirname + "' && mkdir build && cd build && cmake .. >/dev/null 2>/dev/null && make >/dev/null 2>/dev/null")
+
+        executables = findExecutables(outputdirname)
+        new_executables = []
+        for executable in executables:
+            shutil.move(executable, outputdirname + "/exe_" + basename(executable))
+            new_executables.append(outputdirname + "/exe_" + basename(executable))
+
+        executables = new_executables
+
+        if args.execute:
+            cls()
+
+            while True:
+                print(basename(dir).split("_")[0])
+                print(" ")
+                print(" ")
+
+                for i in range(0, len(executables)):
+                    print(str(i) + " : " + basename(executables[i]))
+                print("[vide] : Passer à l'eleve suivant")
+
+                print(" ")
+                print(" ")
+
+                if cmakepath is None:
+                    print("Aucun CMake trouvé. Il a été généré automatiquement.")
+
+                if len(executables) == 0:
+                    print("Aucun executable trouvé :(")
+
+                print(" ")
+                print(" ")
+
+                i = input("=> ")
+                if i == "":
+                    break
+                try:
+                    i = int(i)
+                except:
+                    continue
+                if i < 0 or i >= len(executables):
+                    continue
+
+                cls()
+                print(":'" + executables[i] + "'")
+                system("'" + executables[i] + "'")
 
     shutil.rmtree(tmpdst)
 
