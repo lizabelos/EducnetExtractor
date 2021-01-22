@@ -108,7 +108,7 @@ def main():
             # todo : generate the CMakeLists.txt
             cmakelistcontent = "cmake_minimum_required(VERSION 2.6)\r\nfile(TO_CMAKE_PATH \"$ENV{IMAGINEPP_ROOT}/CMake\" p)\r\nlist(APPEND CMAKE_MODULE_PATH \"${p}\") #For old Imagine++\r\nlist(APPEND CMAKE_SYSTEM_FRAMEWORK_PATH /Library/Frameworks) #Mac, why not auto?\r\nfind_package(Imagine REQUIRED)\r\n\r\nproject(EducnetExtractor)\n\n\n"
             for cppdir, cppfiles in cppdirs:
-                cppfilesfrombase = ["'" + join(basename(cppdir), basename(file)) + "'" for file in cppfiles]
+                cppfilesfrombase = ["\"" + join(basename(cppdir), basename(file)) + "\"" for file in cppfiles]
                 projectname = re.sub(r'\W+', '', basename(cppdir))
                 cmakelistcontent = cmakelistcontent + "add_executable(" + projectname + " " + " ".join(
                     cppfilesfrombase) + ")\n"
