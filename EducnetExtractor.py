@@ -96,6 +96,10 @@ def findExecutables(path):
 
     return executables
 
+def launchEditor(filelist):
+    command = "gedit " + " ".join(["\"" + x + "\"" for x in filelist])
+    system(command)
+
 
 def process_dir(dir, target_directory, student_list, onlyprintstudent=False, execute=False):
     cmakepath = recursiveFindCMakeLists(dir)
@@ -109,6 +113,7 @@ def process_dir(dir, target_directory, student_list, onlyprintstudent=False, exe
     if cmakepath is not None:
         cmakedirname = dirname(cmakepath)
         shutil.move(cmakedirname, outputdirname)
+        cppdirs = findDirsWithCpp(outputdirname)
     else:
         print("Automatic CMake generation for " + outputdirname)
         mkdir(outputdirname)
@@ -153,6 +158,7 @@ def process_dir(dir, target_directory, student_list, onlyprintstudent=False, exe
             for i in range(0, len(executables)):
                 print(str(i) + " : " + basename(executables[i]))
             print("[vide] : Passer à l'eleve suivant")
+            print("s : Editer les fichiers sources")
 
             print(" ")
             print(" ")
@@ -169,6 +175,13 @@ def process_dir(dir, target_directory, student_list, onlyprintstudent=False, exe
             i = input("=> ")
             if i == "":
                 break
+            if i == "s":
+                filelist = []
+                for cppdir in cppdirs:
+                    filelist = filelist + cppdir[1]
+                print(filelist)
+                launchEditor(filelist)
+                continue
             try:
                 i = int(i)
             except:
