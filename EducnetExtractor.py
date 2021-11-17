@@ -66,13 +66,15 @@ def findStudentsListInDir(path, studentslist):
             f.close()
             c = c.lower()
             for s in studentslist:
-                if c.find(s[0] + " ") >= 0 or c.find(s[0] + "\n") >= 0 or c.find(s[0] + "\t") >= 0 or c.find(s[0] + "\r") >= 0:
+                if c.find(s[0] + " ") >= 0 or c.find(s[0] + "\n") >= 0 or c.find(s[0] + "\t") >= 0 or c.find(
+                        s[0] + "\r") >= 0:
                     result.append(s[0])
         except:
             print("Can't open " + candidate + " for student list")
             # todo
             pass
     return list(dict.fromkeys(result))
+
 
 def findDirsWithCpp(path):
     candidates = [join(path, f) for f in listdir(path) if f.endswith(".cpp") or f.endswith(".h") or f.endswith(".hpp")]
@@ -98,9 +100,79 @@ def findExecutables(path):
 
     return executables
 
+
 def launchEditor(filelist):
     command = "gedit " + " ".join(["\"" + x + "\"" for x in filelist])
     system(command)
+
+
+def findIndentation(str):
+    i = 0
+    for s in str:
+        if s == " ":
+            i = i + 1
+        elif s == "\t":
+            i = i + 4
+        else:
+            break
+    return i
+
+def cleanessOfFile(file):
+    f = open(file)
+    c = f.read()
+    f.close()
+    c = c.split("\n")
+    linesScore = []
+    wantedIdentation = ["exact", 0]
+    lastLine = "BEGIN"
+    lastlastLine = "BEGIN-1"
+    for line in c:
+        if line.replace(" ", "") == "":
+            continue
+        lineScore = 1
+        indentation = findIndentation(line)
+        numClose = sum([1 for x in line if x == "}"])
+        numOpen = sum([1 for x in line if x == "{"])
+        if line.find("}") >= 0 and numClose > numOpen:
+            wantedIdentation[0] = "lower"
+        if wantedIdentation[0] == "exact":
+            if indentation != wantedIdentation[1] and lastlastLine.find(";") >= 0:
+                lineScore = lineScore - 1
+        if wantedIdentation[0] == "lower":
+            if indentation >= wantedIdentation[1] and lastlastLine.find(";") >= 0:
+                lineScore = lineScore - 1
+        if wantedIdentation[0] == "higher":
+            if indentation <= wantedIdentation[1] and lastlastLine.find(";") >= 0:
+                lineScore = lineScore - 1
+        match = re.findall(r"({[ ]*[a-zA-Z])", line)
+        lineScore = lineScore - len(match)
+        match = re.findall(r"(}})", line)
+        lineScore = lineScore - len(match) * 5
+        if line.find("{") >= 0 and line.find("}") >= 0:
+            lineScore = lineScore - 5
+        elif line.find("{") >= 0:
+            wantedIdentation = ["higher", indentation]
+        elif line.find("}") >= 0:
+            wantedIdentation = ["exact", indentation]
+        else:
+            wantedIdentation = ["extact", indentation]
+        linesScore.append(lineScore)
+        lastlastLine = lastLine
+        lastLine = line
+    return linesScore
+
+
+def cleannessOfFiles(fileList):
+    results = []
+    for f in fileList:
+        #try:
+        results = results + cleanessOfFile(f)
+        #except:
+        #    pass
+    if len(results) > 0:
+        return statistics.mean(results)
+    else:
+        return -1
 
 
 def process_dir(dir, target_directory, student_list, onlyprintstudent=False, execute=False):
@@ -144,17 +216,24 @@ def process_dir(dir, target_directory, student_list, onlyprintstudent=False, exe
 
     executables = new_executables
 
-    if onlyprintstudent or execute:
-        if not onlyprintstudent:
+    #if onlyprintstudent or execute:
+    if True:
+        if execute and not onlyprintstudent:
             cls()
+
+        filelist = []
+        for cppdir in cppdirs:
+            filelist = filelist + cppdir[1]
+        cleanness = cleannessOfFiles(filelist)
 
         while True:
             print(basename(dir).split("_")[0])
             print("Found other students : " + str(students))
+            print("Cleanness : " + str(cleanness))
             print(" ")
             print(" ")
 
-            if onlyprintstudent:
+            if onlyprintstudent or not execute:
                 break
 
             for i in range(0, len(executables)):
@@ -178,10 +257,6 @@ def process_dir(dir, target_directory, student_list, onlyprintstudent=False, exe
             if i == "":
                 break
             if i == "s":
-                filelist = []
-                for cppdir in cppdirs:
-                    filelist = filelist + cppdir[1]
-                print(filelist)
                 launchEditor(filelist)
                 continue
             try:
@@ -203,6 +278,7 @@ def detectPlagiatBetweenFiles(f1, f2):
         return 0
     return compare(f1, f2, isfile=True)
 
+
 def detectPlagiatInFolder(src1, src2):
     cppdirs1 = findDirsWithCpp(src1)
     cppdirs2 = findDirsWithCpp(src2)
@@ -219,6 +295,7 @@ def detectPlagiatInFolder(src1, src2):
             value = max(detectPlagiatBetweenFiles(f1, f2), value)
         values.append(value)
     return statistics.mean(values)
+
 
 def cls():
     os.system('cls' if os.name == 'nt' else 'clear')
