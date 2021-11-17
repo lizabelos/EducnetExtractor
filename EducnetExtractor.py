@@ -6,11 +6,13 @@ import re
 import shutil
 import tempfile
 import requests
+import statistics
 
 from os import listdir, mkdir, system
 from os.path import isfile, isdir, join, dirname, basename
 
 from pyunpack import Archive
+from pysimilar import compare
 
 
 def getGradesTable():
@@ -193,6 +195,30 @@ def process_dir(dir, target_directory, student_list, onlyprintstudent=False, exe
             print(":'" + executables[i] + "'")
             system("'" + executables[i] + "'")
 
+    return outputdirname
+
+
+def detectPlagiatBetweenFiles(f1, f2):
+    if f1 == f2:
+        return 0
+    return compare(f1, f2, isfile=True)
+
+def detectPlagiatInFolder(src1, src2):
+    cppdirs1 = findDirsWithCpp(src1)
+    cppdirs2 = findDirsWithCpp(src2)
+    filelist1 = []
+    for cppdir in cppdirs1:
+        filelist1 = filelist1 + cppdir[1]
+    filelist2 = []
+    for cppdir in cppdirs2:
+        filelist2 = filelist2 + cppdir[1]
+    values = []
+    for f1 in filelist1:
+        value = 0
+        for f2 in filelist2:
+            value = max(detectPlagiatBetweenFiles(f1, f2), value)
+        values.append(value)
+    return statistics.mean(values)
 
 def cls():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -214,6 +240,7 @@ def main():
             Archive(file).extractall(tmpdst)
 
         dirs = [join(tmpdst, f) for f in listdir(tmpdst) if isdir(join(tmpdst, f))]
+        output_dirs = []
         files = []
         for dir in dirs:
             files = files + [join(dir, f) for f in listdir(dir) if isfile(join(dir, f))]
@@ -231,7 +258,20 @@ def main():
 
         student_list = getStudentsList()
         for dir in dirs:
-            process_dir(dir, dst, student_list, onlyprintstudent=args.student, execute=args.execute)
+            output = process_dir(dir, dst, student_list, onlyprintstudent=args.student, execute=args.execute)
+            output_dirs = output_dirs + [output]
+
+        for dir1 in output_dirs:
+            max_value = 0
+            max_dir = ""
+            for dir2 in output_dirs:
+                if dir1 == dir2:
+                    continue
+                value = detectPlagiatInFolder(dir1, dir2)
+                if value > max_value:
+                    max_dir = dir2
+                    max_value = value
+            print("%s ==> %s Similarity %d" % (dir1, max_dir, max_value * 100))
 
 
 if __name__ == '__main__':
