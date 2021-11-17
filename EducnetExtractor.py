@@ -181,7 +181,6 @@ def process_dir(dir, target_directory, student_list, onlyprintstudent=False, exe
     cppdirs = findDirsWithCpp(dir)
     students = []
     for cppdir in cppdirs:
-        print(cppdir[0])
         students = students + findStudentsListInDir(cppdir[0], student_list)
 
     if cmakepath is not None:
@@ -345,10 +344,15 @@ def main():
                 if dir1 == dir2:
                     continue
                 value = detectPlagiatInFolder(dir1, dir2)
-                if value > max_value:
+                if value > 0.97:
+                    print("PLAGIAT !!! %s ==> %s (Similarity %d %%)" % (os.path.basename(dir1), os.path.basename(dir2), value * 100))
+                if value > 0.8:
+                    print("%s ==> %s (Similarity %d %%)" % (os.path.basename(dir1), os.path.basename(dir2), value * 100))
+                elif value > 0.5 and value > max_value:
                     max_dir = dir2
                     max_value = value
-            print("%s ==> %s Similarity %d" % (dir1, max_dir, max_value * 100))
+            if max_value > 0.5:
+                print("%s ==> %s (Similarity %d %%)" % (os.path.basename(dir1), os.path.basename(max_dir), max_value * 100))
 
 
 if __name__ == '__main__':
