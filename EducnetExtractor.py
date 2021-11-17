@@ -5,11 +5,39 @@ import os
 import re
 import shutil
 import tempfile
+import requests
 
 from os import listdir, mkdir, system
 from os.path import isfile, isdir, join, dirname, basename
 
 from pyunpack import Archive
+
+
+def getGradesTable():
+    table = requests.get("http://imagine.enpc.fr/~monasse/Info/TPs/NotesExos.html").content
+    table = re.sub(r'<([a-zA-Z\/]*)[^>]*>', r'<\1>', table.decode("utf-8"))
+    table = table.replace("\n", "")
+    table = table.replace("\t", "")
+    begin = table.find("<table>") + len("<table>")
+    end = table.find("</table>")
+    table = table[begin:end]
+    table = table.replace("<font>", "")
+    table = table.replace("</font>", "")
+    table = table.replace("<colgroup>", "")
+    table = table.replace("</colgroup>", "")
+    table = table.replace("<br>", "")
+    table = table.replace("</tr>", "")
+    table = table.replace("</td>", "")
+    table = table.split("<tr>")
+    table = [[y for y in x.split("<td>") if y != ""] for x in table]
+    table = [x for x in table if len(x) > 0]
+    return table
+
+
+def getStudentsList():
+    table = getGradesTable()
+    table = [[x[0].lower(), x[1].lower()] for x in table if not x[0].startswith("Groupe")]
+    return table
 
 
 def recursiveFindCMakeLists(path):
@@ -26,8 +54,26 @@ def recursiveFindCMakeLists(path):
     return None
 
 
+def findStudentsListInDir(path, studentslist):
+    candidates = [join(path, f) for f in listdir(path) if f.endswith(".cpp") or f.endswith(".h") or f.endswith(".hpp")]
+    result = []
+    for candidate in candidates:
+        try:
+            f = open(candidate, "r")
+            c = f.read()
+            f.close()
+            c = c.lower()
+            for s in studentslist:
+                if c.find(s[0] + " ") >= 0 or c.find(s[0] + "\n") >= 0 or c.find(s[0] + "\t") >= 0 or c.find(s[0] + "\r") >= 0:
+                    result.append(s[0])
+        except:
+            print("Can't open " + candidate + " for student list")
+            # todo
+            pass
+    return list(dict.fromkeys(result))
+
 def findDirsWithCpp(path):
-    candidates = [join(path, f) for f in listdir(path) if f.endswith(".cpp")]
+    candidates = [join(path, f) for f in listdir(path) if f.endswith(".cpp") or f.endswith(".h") or f.endswith(".hpp")]
     if len(candidates) > 0:
         return [(path, candidates)]
 
@@ -50,20 +96,25 @@ def findExecutables(path):
 
     return executables
 
-def process_dir(dir, target_directory, execute=False):
+
+def process_dir(dir, target_directory, student_list, onlyprintstudent=False, execute=False):
     cmakepath = recursiveFindCMakeLists(dir)
     outputdirname = join(target_directory, basename(dir).split("_")[0])
+    cppdirs = findDirsWithCpp(dir)
+    students = []
+    for cppdir in cppdirs:
+        print(cppdir[0])
+        students = students + findStudentsListInDir(cppdir[0], student_list)
+
     if cmakepath is not None:
         cmakedirname = dirname(cmakepath)
         shutil.move(cmakedirname, outputdirname)
     else:
         print("Automatic CMake generation for " + outputdirname)
-        cppdirs = findDirsWithCpp(dir)
         mkdir(outputdirname)
         for cppdir, cppfiles in cppdirs:
             shutil.move(cppdir, join(outputdirname, basename(cppdir)))
         cppdirs = findDirsWithCpp(outputdirname)
-        # todo : generate the CMakeLists.txt
         cmakelistcontent = "cmake_minimum_required(VERSION 2.6)\r\nfile(TO_CMAKE_PATH \"$ENV{IMAGINEPP_ROOT}/CMake\" p)\r\nlist(APPEND CMAKE_MODULE_PATH \"${p}\") #For old Imagine++\r\nlist(APPEND CMAKE_SYSTEM_FRAMEWORK_PATH /Library/Frameworks) #Mac, why not auto?\r\nfind_package(Imagine REQUIRED)\r\n\r\nproject(EducnetExtractor)\n\n\n"
         for cppdir, cppfiles in cppdirs:
             cppfilesfrombase = ["\"" + join(basename(cppdir), basename(file)) + "\"" for file in cppfiles]
@@ -75,7 +126,8 @@ def process_dir(dir, target_directory, execute=False):
         with open(join(outputdirname, "CMakeLists.txt"), "w") as text_file:
             text_file.write(cmakelistcontent)
 
-    system("cd '" + outputdirname + "' && mkdir build && cd build && cmake .. >/dev/null 2>/dev/null && make >/dev/null 2>/dev/null")
+    system(
+        "cd '" + outputdirname + "' && mkdir build && cd build && cmake .. >/dev/null 2>/dev/null && make >/dev/null 2>/dev/null")
 
     executables = findExecutables(outputdirname)
     new_executables = []
@@ -85,13 +137,18 @@ def process_dir(dir, target_directory, execute=False):
 
     executables = new_executables
 
-    if execute:
-        cls()
+    if onlyprintstudent or execute:
+        if not onlyprintstudent:
+            cls()
 
         while True:
             print(basename(dir).split("_")[0])
+            print("Found other students : " + str(students))
             print(" ")
             print(" ")
+
+            if onlyprintstudent:
+                break
 
             for i in range(0, len(executables)):
                 print(str(i) + " : " + basename(executables[i]))
@@ -123,14 +180,17 @@ def process_dir(dir, target_directory, execute=False):
             print(":'" + executables[i] + "'")
             system("'" + executables[i] + "'")
 
+
 def cls():
-    os.system('cls' if os.name=='nt' else 'clear')
+    os.system('cls' if os.name == 'nt' else 'clear')
+
 
 def main():
     parser = argparse.ArgumentParser("EductnetExtractor by Thomas Belos")
     parser.add_argument("-z", "--zip", nargs='+', help='<Required> One or more zip file', required=True)
     parser.add_argument("-d", "--dst", help='<Required> Destination directory', required=True)
     parser.add_argument("-e", "--execute", help='execute the file', type=bool)
+    parser.add_argument("-s", "--student", help='only print students', type=bool)
 
     args = parser.parse_args()
 
@@ -156,8 +216,9 @@ def main():
             except Exception as exc:
                 print(exc)
 
+        student_list = getStudentsList()
         for dir in dirs:
-            process_dir(dir, dst, execute=args.execute)
+            process_dir(dir, dst, student_list, onlyprintstudent=args.student, execute=args.execute)
 
 
 if __name__ == '__main__':
